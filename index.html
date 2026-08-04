@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Night Run</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #030609; font-family: Arial, Helvetica, sans-serif; }
+    canvas { display: block; }
+    #hud { position: fixed; inset: 0; pointer-events: none; color: #f5f5ef; text-shadow: 0 2px 5px #000; font-weight: 800; }
+    .top { position: absolute; top: 22px; left: 26px; right: 26px; display: flex; direction: ltr; justify-content: space-between; font-size: 14px; letter-spacing: .7px; }
+    .stats { line-height: 1.65; } .muted { color: #b6bdc1; font-size: 11px; }
+    #level { text-align: center; font-size: 15px; }
+    #pause { font-size: 34px; letter-spacing: -4px; cursor: pointer; pointer-events: auto; }
+    .bottom { position: absolute; left: 40px; right: 40px; bottom: 24px; display: flex; align-items: center; gap: 13px; direction: ltr; font-size: 11px; }
+    #progress { height: 13px; flex: 1; border: 2px solid #1b1e20; border-radius: 3px; background: #53575a; box-shadow: 0 1px 2px #000; overflow: hidden; }
+    #bar { width: 12%; height: 100%; background: linear-gradient(90deg,#fff,#d9dedf); }
+    #overlay { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(circle, transparent 0%, rgba(0,0,0,.62) 100%); color: white; text-align: center; }
+    #panel { padding: 26px 38px; background: rgba(5,9,13,.74); border: 1px solid rgba(255,255,255,.14); border-radius: 7px; box-shadow: 0 10px 35px #000; }
+    h1 { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 3px; font-size: 34px; } p { margin: 8px 0 20px; color: #d2d5d7; font-size: 15px; }
+    button { border: 0; border-radius: 3px; padding: 11px 24px; background: #e8e9e3; color: #111; font-weight: 800; cursor: pointer; letter-spacing: 1px; }
+    #hint { position: absolute; top: calc(50% + 88px); width: 100%; text-align: center; color: #bfc4c6; font-size: 12px; }
+    @media (max-width: 600px) { .top { top: 15px; left: 16px; right: 16px; font-size: 12px; } .bottom { left: 16px; right: 16px; bottom: 16px; } h1 { font-size: 27px; } }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="top"><div class="stats"><span class="muted">SCORE:</span> <span id="score">00000</span><br><span class="muted">BEST:</span> <span id="best">00000</span></div><div id="level">LEVEL <span>1</span></div><div id="pause" title="Pause">Ⅱ</div></div>
+    <div class="bottom"><b>PROGRESS</b><div id="progress"><div id="bar"></div></div></div>
+  </div>
+  <div id="overlay"><div id="panel"><h1 id="title">Night Run</h1><p id="message">קפצו מעל המכשולים והחזיקו מעמד בעיר.</p><button id="start">START RUN</button></div><div id="hint">SPACE / ↑: JUMP &nbsp; • &nbsp; A / D או ← / →: MOVE</div></div>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js" } }
+  </script>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/loaders/GLTFLoader.js';
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x03070b); scene.fog = new THREE.Fog(0x03070b, 22, 115);
+    const camera = new THREE.PerspectiveCamera(64, innerWidth / innerHeight, .1, 200); camera.position.set(0, 3.85, 8.15);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; document.body.appendChild(renderer.domElement);
+    const hemi = new THREE.HemisphereLight(0x31455d, 0x0c0907, 1.5); scene.add(hemi);
+    const moon = new THREE.DirectionalLight(0xb8cce5, 2.2); moon.position.set(-12,18,7); moon.castShadow = true; moon.shadow.mapSize.set(1024,1024); scene.add(moon);
+    const warm = new THREE.Color(0xffc87a), roadMat = new THREE.MeshStandardMaterial({color:0x181b1d, roughness:.88}), curbMat = new THREE.MeshStandardMaterial({color:0x8c8d86, roughness:.8});
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(16, 210), roadMat); road.rotation.x=-Math.PI/2; road.position.z=-72; road.receiveShadow=true; scene.add(road);
+    const roadSide = new THREE.BoxGeometry(.42,.16,210);
+    [-8.15,8.15].forEach(x=>{ const c=new THREE.Mesh(roadSide,curbMat);c.position.set(x,.08,-72);c.receiveShadow=true;scene.add(c); });
+    // repeating lane markers
+    const markers=[]; const markerGeo=new THREE.BoxGeometry(.18,.025,3.3), markerMat=new THREE.MeshBasicMaterial({color:0xb9b6a6});
+    for(let z=12;z>-170;z-=11){[-2.65,2.65].forEach(x=>{let m=new THREE.Mesh(markerGeo,markerMat);m.position.set(x,.025,z);scene.add(m);markers.push(m);});}
+    // skyline: simple dark silhouettes with sparse lit windows
+    const buildingMat=new THREE.MeshStandardMaterial({color:0x0a1017, roughness:.9, metalness:.1}), winMat=new THREE.MeshBasicMaterial({color:0xffd68c});
+    for(let i=0;i<34;i++){ const side=i%2?1:-1, z=-8-Math.floor(i/2)*6.2, w=2.5+Math.random()*4, h=5+Math.random()*22; const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,4+Math.random()*5),buildingMat);b.position.set(side*(11+Math.random()*7),h/2,z);scene.add(b); if(i%2===0){for(let y=2;y<h-1;y+=3.2){const win=new THREE.Mesh(new THREE.BoxGeometry(.18,.18,.03),winMat);win.position.set(b.position.x-side*w/2-.02,y,z+1);scene.add(win)}}}
+    // street lamps are intentionally few for performance
+    function lamp(x,z){const pole=new THREE.Mesh(new THREE.CylinderGeometry(.06,.09,7,8),new THREE.MeshStandardMaterial({color:0x24272a,metalness:.7}));pole.position.set(x,3.5,z);scene.add(pole);const arm=new THREE.Mesh(new THREE.BoxGeometry(1.2,.08,.08),pole.material);arm.position.set(x-(x>0?-.55:.55),6.8,z);scene.add(arm);const bulb=new THREE.PointLight(0xffc978,14,25,2);bulb.position.set(x-(x>0?-.95:.95),6.65,z);scene.add(bulb);}
+    for(let z=4;z>-120;z-=20){lamp(-7.5,z);lamp(7.5,z-10)}
+    const player=new THREE.Group(); scene.add(player); player.position.set(0,0,3.2);
+    let character, mixer, runAction, characterReady=false;
+    const loader=new GLTFLoader();
+    loader.load('./azri_run_animation.glb', gltf=>{
+      character=gltf.scene;
+      // Normalize every downloaded GLB to a ~2.5 unit-tall runner and sit it on the road.
+      const bounds=new THREE.Box3().setFromObject(character), size=bounds.getSize(new THREE.Vector3());
+      const scale=2.55/Math.max(size.y,.01); character.scale.setScalar(scale);
+      const scaledBounds=new THREE.Box3().setFromObject(character), center=scaledBounds.getCenter(new THREE.Vector3());
+      character.position.set(-center.x,-scaledBounds.min.y,-center.z);
+      character.rotation.y=Math.PI;
+      character.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true;}});
+      player.add(character); characterReady=true;
+      if(gltf.animations.length){
+        mixer=new THREE.AnimationMixer(character);
+        const runClip=gltf.animations.find(clip=>/run/i.test(clip.name))||gltf.animations[0];
+        runAction=mixer.clipAction(runClip);runAction.setLoop(THREE.LoopRepeat,Infinity);runAction.play();
+      }
+    }, undefined, error=>console.error('Could not load the runner model.',error));
+    const obstacles=[]; const obstacleMat=new THREE.MeshStandardMaterial({color:0xd8c69a,roughness:.76});
+    function addObstacle(){const lane=[-4.2,0,4.2][Math.floor(Math.random()*3)], type=Math.random()<.55?'barrier':'crate'; let mesh;
+      if(type==='barrier'){const g=new THREE.Group();const base=new THREE.Mesh(new THREE.BoxGeometry(2.0,.78,.36),new THREE.MeshStandardMaterial({color:0xddd9c7}));base.position.y=.4;base.castShadow=true;g.add(base);for(let x=-.65;x<.8;x+=.65){const s=new THREE.Mesh(new THREE.BoxGeometry(.34,.82,.025),new THREE.MeshBasicMaterial({color:0xe25631}));s.position.set(x,.42,.19);s.rotation.z=-.5;g.add(s)}mesh=g;} else {mesh=new THREE.Mesh(new THREE.BoxGeometry(1.35,1.35,1.35),obstacleMat);mesh.position.y=.68;mesh.castShadow=true;}
+      mesh.position.x=lane;mesh.position.z=-95;scene.add(mesh);obstacles.push(mesh); }
+    let playing=false, paused=false, score=0, speed=18, spawn=0, jumpV=0, last=performance.now(), best=+localStorage.nightRunBest||0;
+    const movement={left:false,right:false};
+    document.querySelector('#best').textContent=String(best).padStart(5,'0');
+    const overlay=document.querySelector('#overlay'), title=document.querySelector('#title'), msg=document.querySelector('#message'), start=document.querySelector('#start');
+    function begin(){playing=true;paused=false;score=0;speed=18;spawn=.7;player.position.set(0,0,3.2);player.rotation.set(0,0,0);jumpV=0;obstacles.forEach(o=>scene.remove(o));obstacles.length=0;overlay.style.display='none';}
+    function jump(){if(playing&&!paused&&player.position.y<.03)jumpV=9.3;}
+    start.onclick=begin; addEventListener('keydown',e=>{
+      if(['Space','ArrowUp','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+      if(e.code==='Space'||e.code==='ArrowUp'){if(!playing)begin();else jump()}
+      if(e.code==='ArrowLeft'||e.code==='KeyA')movement.left=true;
+      if(e.code==='ArrowRight'||e.code==='KeyD')movement.right=true;
+      if(e.code==='KeyP')togglePause();
+    });
+    addEventListener('keyup',e=>{if(e.code==='ArrowLeft'||e.code==='KeyA')movement.left=false;if(e.code==='ArrowRight'||e.code==='KeyD')movement.right=false;});
+    renderer.domElement.addEventListener('pointerdown',jump);
+    function togglePause(){if(!playing)return;paused=!paused;document.querySelector('#pause').textContent=paused?'▶':'Ⅱ';}
+    document.querySelector('#pause').onclick=togglePause;
+    function gameOver(){playing=false;best=Math.max(best,Math.floor(score));localStorage.nightRunBest=best;document.querySelector('#best').textContent=String(best).padStart(5,'0');title.textContent='RUN OVER';msg.textContent=`הניקוד שלך: ${Math.floor(score)} — נסו שוב!`;start.textContent='TRY AGAIN';overlay.style.display='grid';}
+    function animate(now){requestAnimationFrame(animate);let dt=Math.min(.05,(now-last)/1000);last=now;if(playing&&!paused){speed=Math.min(37,18+score/75);score+=dt*10;spawn-=dt;if(spawn<=0){addObstacle();spawn=Math.max(.76,1.68-score/350)+Math.random()*.35}
+      const lateral=(movement.right?1:0)-(movement.left?1:0); player.position.x=THREE.MathUtils.clamp(player.position.x+lateral*8.8*dt,-6.35,6.35); player.rotation.z=THREE.MathUtils.lerp(player.rotation.z,-lateral*.13,.16);
+      player.position.y+=jumpV*dt;jumpV-=25*dt;if(player.position.y<=0){player.position.y=0;jumpV=0}if(mixer)mixer.update(dt*(speed/18));
+      obstacles.forEach((o,i)=>{o.position.z+=speed*dt;if(o.position.z>9){scene.remove(o);obstacles.splice(i,1);return}const dx=Math.abs(o.position.x-player.position.x),dz=Math.abs(o.position.z-player.position.z);if(dx<.95&&dz<.95&&player.position.y<1.1)gameOver()});
+      markers.forEach(m=>{m.position.z+=speed*dt;if(m.position.z>15)m.position.z-=187});document.querySelector('#score').textContent=String(Math.floor(score)).padStart(5,'0');document.querySelector('#level span').textContent=1+Math.floor(score/150);document.querySelector('#bar').style.width=(8+(score%150)/150*92)+'%';}
+      camera.position.lerp(new THREE.Vector3(player.position.x,3.7+player.position.y*.14,8.15),.13);camera.lookAt(player.position.x,1.28,-12.5);renderer.render(scene,camera)}
+    addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});animate(performance.now());
+  </script>
+</body>
+</html>
