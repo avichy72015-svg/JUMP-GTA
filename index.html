@@ -21,6 +21,8 @@
     h1 { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 3px; font-size: 34px; } p { margin: 8px 0 20px; color: #d2d5d7; font-size: 15px; }
     button { border: 0; border-radius: 3px; padding: 11px 24px; background: #e8e9e3; color: #111; font-weight: 800; cursor: pointer; letter-spacing: 1px; }
     #hint { position: absolute; top: calc(50% + 88px); width: 100%; text-align: center; color: #bfc4c6; font-size: 12px; }
+    #cheat-menu { display: none; position: fixed; z-index: 2; top: 50%; left: 50%; width: min(330px, calc(100vw - 36px)); padding: 20px; transform: translate(-50%, -50%); color: #f5f5ef; text-align: center; background: rgba(5,9,13,.94); border: 1px solid rgba(255,255,255,.18); border-radius: 7px; box-shadow: 0 10px 35px #000; }
+    #cheat-menu.visible { display: block; } #cheat-menu h2 { margin: 0 0 14px; font-size: 19px; } .cheat-option { display: flex; width: 100%; margin: 8px 0; align-items: center; justify-content: space-between; font-size: 13px; } .cheat-option button { padding: 8px 12px; font-size: 11px; } .cheat-option button.active { background: #70d48b; }
     @media (max-width: 600px) { .top { top: 15px; left: 16px; right: 16px; font-size: 12px; } .bottom { left: 16px; right: 16px; bottom: 16px; } h1 { font-size: 27px; } }
   </style>
 </head>
@@ -30,6 +32,7 @@
     <div class="bottom"><b>PROGRESS</b><div id="progress"><div id="bar"></div></div></div>
   </div>
   <div id="overlay"><div id="panel"><h1 id="title">Night Run</h1><p id="message">קפצו מעל המכשולים והחזיקו מעמד בעיר.</p><button id="start">START RUN</button></div><div id="hint">SPACE / ↑: JUMP &nbsp; • &nbsp; A / D או ← / →: MOVE</div></div>
+  <div id="cheat-menu" aria-label="Cheat menu"><h2>CHEATS</h2><div class="cheat-option"><span>Flight — hold SPACE / ↑</span><button id="cheat-fly" type="button">OFF</button></div><div class="cheat-option"><span>Pass through obstacles</span><button id="cheat-noclip" type="button">OFF</button></div><button id="cheat-close" type="button">DONE</button></div>
   <audio id="jump-sound" src="jump.wav" preload="auto"></audio>
   <audio id="game-over-sound" src="game-over.wav" preload="auto"></audio>
   <script type="importmap">
@@ -80,30 +83,36 @@
     function addObstacle(){const lane=[-4.2,0,4.2][Math.floor(Math.random()*3)], type=Math.random()<.55?'barrier':'crate'; let mesh;
       if(type==='barrier'){const g=new THREE.Group();const base=new THREE.Mesh(new THREE.BoxGeometry(2.0,.78,.36),new THREE.MeshStandardMaterial({color:0xddd9c7}));base.position.y=.4;base.castShadow=true;g.add(base);for(let x=-.65;x<.8;x+=.65){const s=new THREE.Mesh(new THREE.BoxGeometry(.34,.82,.025),new THREE.MeshBasicMaterial({color:0xe25631}));s.position.set(x,.42,.19);s.rotation.z=-.5;g.add(s)}mesh=g;} else {mesh=new THREE.Mesh(new THREE.BoxGeometry(1.35,1.35,1.35),obstacleMat);mesh.position.y=.68;mesh.castShadow=true;}
       mesh.position.x=lane;mesh.position.z=-95;scene.add(mesh);obstacles.push(mesh); }
-    let playing=false, paused=false, score=0, speed=18, spawn=0, jumpV=0, last=performance.now(), best=+localStorage.nightRunBest||0;
+    let playing=false, paused=false, hasStarted=false, score=0, speed=18, spawn=0, jumpV=0, flightInput=false, secretCode='', last=performance.now(), best=+localStorage.nightRunBest||0;
     const movement={left:false,right:false};
+    const cheats={fly:false,noclip:false};
     document.querySelector('#best').textContent=String(best).padStart(5,'0');
     const overlay=document.querySelector('#overlay'), title=document.querySelector('#title'), msg=document.querySelector('#message'), start=document.querySelector('#start');
     const jumpSound=document.querySelector('#jump-sound'), gameOverSound=document.querySelector('#game-over-sound');
+    const cheatMenu=document.querySelector('#cheat-menu'), flyButton=document.querySelector('#cheat-fly'), noclipButton=document.querySelector('#cheat-noclip');
     function playSound(sound){sound.currentTime=0;sound.play().catch(()=>{});}
-    function begin(){playing=true;paused=false;score=0;speed=18;spawn=.7;player.position.set(0,0,3.2);player.rotation.set(0,0,0);jumpV=0;obstacles.forEach(o=>scene.remove(o));obstacles.length=0;overlay.style.display='none';}
-    function jump(){if(playing&&!paused&&player.position.y<.03){jumpV=9.3;playSound(jumpSound);}}
+    function setCheat(name,button){cheats[name]=!cheats[name];button.textContent=cheats[name]?'ON':'OFF';button.classList.toggle('active',cheats[name]);}
+    flyButton.onclick=()=>setCheat('fly',flyButton);noclipButton.onclick=()=>setCheat('noclip',noclipButton);document.querySelector('#cheat-close').onclick=()=>cheatMenu.classList.remove('visible');
+    function begin(){playing=true;hasStarted=true;paused=false;score=0;speed=18;spawn=.7;flightInput=false;player.position.set(0,0,3.2);player.rotation.set(0,0,0);jumpV=0;obstacles.forEach(o=>scene.remove(o));obstacles.length=0;overlay.style.display='none';}
+    function jump(){if(playing&&!paused){if(cheats.fly){flightInput=true;return;}if(player.position.y<.03){jumpV=9.3;playSound(jumpSound);}}}
     start.onclick=begin; addEventListener('keydown',e=>{
+      if(!hasStarted&&!e.repeat){secretCode=e.key==='5'?secretCode+'5':'';if(secretCode==='5555'){secretCode='';cheatMenu.classList.add('visible');return;}}
+      if(cheatMenu.classList.contains('visible'))return;
       if(['Space','ArrowUp','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
       if(e.code==='Space'||e.code==='ArrowUp'){if(!playing)begin();else jump()}
       if(e.code==='ArrowLeft'||e.code==='KeyA')movement.left=true;
       if(e.code==='ArrowRight'||e.code==='KeyD')movement.right=true;
       if(e.code==='KeyP')togglePause();
     });
-    addEventListener('keyup',e=>{if(e.code==='ArrowLeft'||e.code==='KeyA')movement.left=false;if(e.code==='ArrowRight'||e.code==='KeyD')movement.right=false;});
+    addEventListener('keyup',e=>{if(e.code==='ArrowLeft'||e.code==='KeyA')movement.left=false;if(e.code==='ArrowRight'||e.code==='KeyD')movement.right=false;if(e.code==='Space'||e.code==='ArrowUp')flightInput=false;});
     renderer.domElement.addEventListener('pointerdown',jump);
     function togglePause(){if(!playing)return;paused=!paused;document.querySelector('#pause').textContent=paused?'▶':'Ⅱ';}
     document.querySelector('#pause').onclick=togglePause;
     function gameOver(){if(!playing)return;playing=false;playSound(gameOverSound);best=Math.max(best,Math.floor(score));localStorage.nightRunBest=best;document.querySelector('#best').textContent=String(best).padStart(5,'0');title.textContent='RUN OVER';msg.textContent=`הניקוד שלך: ${Math.floor(score)} — נסו שוב!`;start.textContent='TRY AGAIN';overlay.style.display='grid';}
     function animate(now){requestAnimationFrame(animate);let dt=Math.min(.05,(now-last)/1000);last=now;if(playing&&!paused){const difficulty=Math.floor(score/100);speed=Math.min(50,18+score/32);score+=dt*10;spawn-=dt;if(spawn<=0){addObstacle();spawn=Math.max(.48,1.42-score/500)+Math.random()*(.28-Math.min(.16,difficulty*.012))}
       const lateral=(movement.right?1:0)-(movement.left?1:0); player.position.x=THREE.MathUtils.clamp(player.position.x+lateral*8.8*dt,-6.35,6.35); player.rotation.z=THREE.MathUtils.lerp(player.rotation.z,-lateral*.13,.16);
-      player.position.y+=jumpV*dt;jumpV-=25*dt;if(player.position.y<=0){player.position.y=0;jumpV=0}if(mixer)mixer.update(dt*(speed/18));
-      obstacles.forEach((o,i)=>{o.position.z+=speed*dt;if(o.position.z>9){scene.remove(o);obstacles.splice(i,1);return}const dx=Math.abs(o.position.x-player.position.x),dz=Math.abs(o.position.z-player.position.z);if(dx<.95&&dz<.95&&player.position.y<1.1)gameOver()});
+      if(cheats.fly&&flightInput){jumpV=0;player.position.y=Math.min(4.6,player.position.y+8*dt)}else{player.position.y+=jumpV*dt;jumpV-=25*dt;if(player.position.y<=0){player.position.y=0;jumpV=0}}if(mixer)mixer.update(dt*(speed/18));
+      obstacles.forEach((o,i)=>{o.position.z+=speed*dt;if(o.position.z>9){scene.remove(o);obstacles.splice(i,1);return}const dx=Math.abs(o.position.x-player.position.x),dz=Math.abs(o.position.z-player.position.z);if(!cheats.noclip&&dx<.95&&dz<.95&&player.position.y<1.1)gameOver()});
       markers.forEach(m=>{m.position.z+=speed*dt;if(m.position.z>15)m.position.z-=187});document.querySelector('#score').textContent=String(Math.floor(score)).padStart(5,'0');document.querySelector('#level span').textContent=1+difficulty;document.querySelector('#bar').style.width=(8+(score%100)/100*92)+'%';}
       camera.position.lerp(new THREE.Vector3(player.position.x,3.7+player.position.y*.14,8.15),.13);camera.lookAt(player.position.x,1.28,-12.5);renderer.render(scene,camera)}
     addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});animate(performance.now());
