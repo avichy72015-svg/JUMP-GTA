@@ -30,6 +30,8 @@
     <div class="bottom"><b>PROGRESS</b><div id="progress"><div id="bar"></div></div></div>
   </div>
   <div id="overlay"><div id="panel"><h1 id="title">Night Run</h1><p id="message">קפצו מעל המכשולים והחזיקו מעמד בעיר.</p><button id="start">START RUN</button></div><div id="hint">SPACE / ↑: JUMP &nbsp; • &nbsp; A / D או ← / →: MOVE</div></div>
+  <audio id="jump-sound" src="jump.wav" preload="auto"></audio>
+  <audio id="game-over-sound" src="game-over.wav" preload="auto"></audio>
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js" } }
   </script>
@@ -82,8 +84,10 @@
     const movement={left:false,right:false};
     document.querySelector('#best').textContent=String(best).padStart(5,'0');
     const overlay=document.querySelector('#overlay'), title=document.querySelector('#title'), msg=document.querySelector('#message'), start=document.querySelector('#start');
+    const jumpSound=document.querySelector('#jump-sound'), gameOverSound=document.querySelector('#game-over-sound');
+    function playSound(sound){sound.currentTime=0;sound.play().catch(()=>{});}
     function begin(){playing=true;paused=false;score=0;speed=18;spawn=.7;player.position.set(0,0,3.2);player.rotation.set(0,0,0);jumpV=0;obstacles.forEach(o=>scene.remove(o));obstacles.length=0;overlay.style.display='none';}
-    function jump(){if(playing&&!paused&&player.position.y<.03)jumpV=9.3;}
+    function jump(){if(playing&&!paused&&player.position.y<.03){jumpV=9.3;playSound(jumpSound);}}
     start.onclick=begin; addEventListener('keydown',e=>{
       if(['Space','ArrowUp','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
       if(e.code==='Space'||e.code==='ArrowUp'){if(!playing)begin();else jump()}
@@ -95,7 +99,7 @@
     renderer.domElement.addEventListener('pointerdown',jump);
     function togglePause(){if(!playing)return;paused=!paused;document.querySelector('#pause').textContent=paused?'▶':'Ⅱ';}
     document.querySelector('#pause').onclick=togglePause;
-    function gameOver(){playing=false;best=Math.max(best,Math.floor(score));localStorage.nightRunBest=best;document.querySelector('#best').textContent=String(best).padStart(5,'0');title.textContent='RUN OVER';msg.textContent=`הניקוד שלך: ${Math.floor(score)} — נסו שוב!`;start.textContent='TRY AGAIN';overlay.style.display='grid';}
+    function gameOver(){if(!playing)return;playing=false;playSound(gameOverSound);best=Math.max(best,Math.floor(score));localStorage.nightRunBest=best;document.querySelector('#best').textContent=String(best).padStart(5,'0');title.textContent='RUN OVER';msg.textContent=`הניקוד שלך: ${Math.floor(score)} — נסו שוב!`;start.textContent='TRY AGAIN';overlay.style.display='grid';}
     function animate(now){requestAnimationFrame(animate);let dt=Math.min(.05,(now-last)/1000);last=now;if(playing&&!paused){speed=Math.min(37,18+score/75);score+=dt*10;spawn-=dt;if(spawn<=0){addObstacle();spawn=Math.max(.76,1.68-score/350)+Math.random()*.35}
       const lateral=(movement.right?1:0)-(movement.left?1:0); player.position.x=THREE.MathUtils.clamp(player.position.x+lateral*8.8*dt,-6.35,6.35); player.rotation.z=THREE.MathUtils.lerp(player.rotation.z,-lateral*.13,.16);
       player.position.y+=jumpV*dt;jumpV-=25*dt;if(player.position.y<=0){player.position.y=0;jumpV=0}if(mixer)mixer.update(dt*(speed/18));
